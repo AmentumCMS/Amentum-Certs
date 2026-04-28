@@ -79,6 +79,7 @@ pkgname="${PACKAGE_NAME}"
 pkgver="${VERSION}"
 pkgrel=0
 pkgdesc="Amentum Root CA Certificates"
+url="https://github.com/AmentumCMS/Amentum-Certs"
 arch="noarch"
 license="Proprietary"
 depends="ca-certificates"
