@@ -49,7 +49,7 @@ Amentum Root CA Certificates
 Build version: ${VERSION}
 Certificates included: ${#CERT_FILES[@]}
 
-APK installs certificates to: /usr/local/share/ca-certificates/amentum/
+APK installs certificates to: /usr/share/ca-certificates/amentum/
 Trust store is refreshed automatically via: update-ca-certificates
 EOF
 
@@ -89,17 +89,13 @@ source="${TARBALL_NAME}"
 sha512sums="${SHA512}  ${TARBALL_NAME}"
 
 package() {
-    local certdir="\${pkgdir}/usr/local/share/ca-certificates/amentum"
+    local certdir="\${pkgdir}/usr/share/ca-certificates/amentum"
     install -d "\${certdir}"
-    install -d "\${pkgdir}/usr/share/doc/\${pkgname}"
 
     for cert in "\${srcdir}/certs-${VERSION}/"*.crt; do
         [ -f "\${cert}" ] || continue
         install -m 0644 "\${cert}" "\${certdir}/"
     done
-
-    install -m 0644 "\${srcdir}/certs-${VERSION}/README.txt" \
-        "\${pkgdir}/usr/share/doc/\${pkgname}/"
 }
 APKBUILD
 

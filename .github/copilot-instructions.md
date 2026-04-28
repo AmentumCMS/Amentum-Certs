@@ -56,6 +56,7 @@ certificates after installation.
 |---|---|
 | RPM (RHEL/CentOS/Rocky/Alma) | `/etc/pki/ca-trust/source/anchors/` |
 | DEB (Debian/Ubuntu) | `/usr/local/share/ca-certificates/amentum/` |
+| APK (Alpine Linux) | `/usr/share/ca-certificates/amentum/` |
 
 ### Build Scripts
 - `scripts/build-rpm.sh [VERSION]` — generates a spec file dynamically from the

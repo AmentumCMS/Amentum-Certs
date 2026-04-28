@@ -75,7 +75,7 @@ jobs:
 
           echo ""
           echo "=== Installed Amentum certificate files ==="
-          ls -la /usr/local/share/ca-certificates/amentum/ 2>/dev/null \
+          ls -la /usr/share/ca-certificates/amentum/ 2>/dev/null \
             || echo "(no certificate files installed in this build)"
 
           echo ""
@@ -86,7 +86,7 @@ jobs:
 
           echo ""
           echo "=== Amentum certificate subjects ==="
-          for cert in /usr/local/share/ca-certificates/amentum/*.crt; do
+          for cert in /usr/share/ca-certificates/amentum/*.crt; do
             [ -f "${cert}" ] && \
               echo "Installed: $(openssl x509 -noout -subject -in "${cert}" 2>/dev/null \
                 || echo "${cert}")"
