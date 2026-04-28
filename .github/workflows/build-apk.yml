@@ -54,7 +54,12 @@ jobs:
           ABUILD_ALLOW_ROOT: "1"
           PACKAGER: "Amentum CI <certs@amentum.com>"
         run: |
-          abuild-keygen -a -i -n
+          # Generate keypair without -i (which needs doas); install pubkey manually since we're root
+          abuild-keygen -a -n
+          pub_key="$(ls /github/home/.abuild/*.rsa.pub 2>/dev/null | head -1)"
+          if [ -n "${pub_key}" ]; then
+            cp "${pub_key}" /etc/apk/keys/
+          fi
 
       - name: Build APK
         env:

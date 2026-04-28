@@ -60,10 +60,10 @@ install -m 0644 %{_sourcedir}/README.txt %{buildroot}/usr/share/doc/${PACKAGE_NA
 install -d %{buildroot}/etc/pki/ca-trust/source/anchors
 SPEC
 
-# Add one install line per cert
+# Add one install line per cert (quote paths to handle spaces in filenames)
 for cert in "${CERT_FILES[@]}"; do
     fname="$(basename "${cert}")"
-    echo "install -m 0644 %{_sourcedir}/${fname} %{buildroot}/etc/pki/ca-trust/source/anchors/" \
+    echo "install -m 0644 \"%{_sourcedir}/${fname}\" \"%{buildroot}/etc/pki/ca-trust/source/anchors/${fname}\"" \
         >> "${SPEC_FILE}"
 done
 
@@ -80,10 +80,10 @@ cat >> "${SPEC_FILE}" <<SPEC
 /usr/share/doc/${PACKAGE_NAME}/README.txt
 SPEC
 
-# Add one %files line per cert
+# Add one %files line per cert (quote paths to handle spaces in filenames)
 for cert in "${CERT_FILES[@]}"; do
     fname="$(basename "${cert}")"
-    echo "/etc/pki/ca-trust/source/anchors/${fname}" >> "${SPEC_FILE}"
+    echo "\"/etc/pki/ca-trust/source/anchors/${fname}\"" >> "${SPEC_FILE}"
 done
 
 # Changelog (bash expands the date command; RPM macros are left untouched)
