@@ -1,0 +1,89 @@
+name: Build RPM Package
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'certs/**'
+      - 'scripts/build-rpm.sh'
+      - '.github/workflows/build-rpm.yml'
+  workflow_call:
+    inputs:
+      version:
+        description: 'Package version (YYYYMMDD format)'
+        type: string
+        required: false
+        default: ''
+    outputs:
+      artifact-name:
+        description: 'Name of the uploaded RPM artifact'
+        value: ${{ jobs.build.outputs.artifact-name }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and Test RPM
+    runs-on: ubuntu-latest
+    container:
+      image: rockylinux:9
+    outputs:
+      artifact-name: ${{ steps.artifact-meta.outputs.artifact-name }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          dnf install -y rpm-build rpmdevtools ca-certificates p11-kit-trust openssl
+
+      - name: Set version
+        id: version
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [ -z "${VERSION}" ]; then
+            VERSION="$(date +%Y%m%d)"
+          fi
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build RPM
+        run: |
+          chmod +x scripts/build-rpm.sh
+          ./scripts/build-rpm.sh "${{ steps.version.outputs.version }}"
+
+      - name: Test RPM installation
+        run: |
+          echo "=== Installing RPM package ==="
+          rpm -ivh amentum-certs-*.rpm
+
+          echo ""
+          echo "=== Refreshing CA trust store ==="
+          update-ca-trust extract
+
+          echo ""
+          echo "=== Installed Amentum certificate files ==="
+          rpm -ql amentum-certs | grep '/etc/pki/ca-trust/source/anchors/' \
+            || echo "(no certificate files installed in this build)"
+
+          echo ""
+          echo "=== Installed certificate subjects ==="
+          rpm -ql amentum-certs | grep '/etc/pki/ca-trust/source/anchors/' | while IFS= read -r cert; do
+            [ -f "${cert}" ] || continue
+            echo "  $(openssl x509 -noout -subject -in "${cert}" 2>/dev/null || echo "${cert}")"
+          done
+
+      - name: Set artifact metadata
+        id: artifact-meta
+        run: |
+          echo "artifact-name=rpm-package-${{ steps.version.outputs.version }}" \
+            >> "${GITHUB_OUTPUT}"
+
+      - name: Upload RPM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-package-${{ steps.version.outputs.version }}
+          path: "*.rpm"
+          if-no-files-found: error
+          retention-days: 30

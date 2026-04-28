@@ -1,0 +1,91 @@
+name: Build DEB Package
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'certs/**'
+      - 'scripts/build-deb.sh'
+      - '.github/workflows/build-deb.yml'
+  workflow_call:
+    inputs:
+      version:
+        description: 'Package version (YYYYMMDD format)'
+        type: string
+        required: false
+        default: ''
+    outputs:
+      artifact-name:
+        description: 'Name of the uploaded DEB artifact'
+        value: ${{ jobs.build.outputs.artifact-name }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and Test DEB
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-name: ${{ steps.artifact-meta.outputs.artifact-name }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y dpkg-dev
+
+      - name: Set version
+        id: version
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [ -z "${VERSION}" ]; then
+            VERSION="$(date +%Y%m%d)"
+          fi
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build DEB
+        run: |
+          chmod +x scripts/build-deb.sh
+          ./scripts/build-deb.sh "${{ steps.version.outputs.version }}"
+
+      - name: Test DEB installation
+        run: |
+          echo "=== Installing DEB package ==="
+          sudo dpkg -i amentum-certs_*.deb
+
+          echo ""
+          echo "=== Installed Amentum certificate files ==="
+          ls -la /usr/local/share/ca-certificates/amentum/ 2>/dev/null \
+            || echo "(no certificate files installed in this build)"
+
+          echo ""
+          echo "=== CA trust store update output ==="
+          sudo update-ca-certificates --fresh 2>&1 \
+            | grep -iE "adding|added|amentum" \
+            || echo "(no Amentum certificates added to trust store)"
+
+          echo ""
+          echo "=== Amentum certificate subjects ==="
+          for cert in /usr/local/share/ca-certificates/amentum/*.crt; do
+            [ -f "${cert}" ] && \
+              echo "Installed: $(openssl x509 -noout -subject -in "${cert}" 2>/dev/null \
+                || echo "${cert}")"
+          done || echo "(no Amentum certificates installed)"
+
+      - name: Set artifact metadata
+        id: artifact-meta
+        run: |
+          echo "artifact-name=deb-package-${{ steps.version.outputs.version }}" \
+            >> "${GITHUB_OUTPUT}"
+
+      - name: Upload DEB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-package-${{ steps.version.outputs.version }}
+          path: "*.deb"
+          if-no-files-found: error
+          retention-days: 30
