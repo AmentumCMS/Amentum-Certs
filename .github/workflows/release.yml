@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version override (default: YYYYMMDD of today)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Compute the release version once so all downstream jobs share the same
+  # YYYYMMDD string (or the manually supplied override).
+  # -------------------------------------------------------------------------
+  version:
+    name: Set Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.set-version.outputs.version }}
+    steps:
+      - name: Compute version
+        id: set-version
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if [ -z "${VERSION}" ]; then
+            VERSION="$(date +%Y%m%d)"
+          fi
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "Release version: ${VERSION}"
+
+  # -------------------------------------------------------------------------
+  # Build & test the RPM package (reuses the shared workflow)
+  # -------------------------------------------------------------------------
+  build-rpm:
+    name: Build RPM
+    needs: version
+    uses: ./.github/workflows/build-rpm.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  # -------------------------------------------------------------------------
+  # Build & test the DEB package (reuses the shared workflow)
+  # -------------------------------------------------------------------------
+  build-deb:
+    name: Build DEB
+    needs: version
+    uses: ./.github/workflows/build-deb.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  # -------------------------------------------------------------------------
+  # Download both artifacts and publish the GitHub release
+  # -------------------------------------------------------------------------
+  release:
+    name: Publish Release
+    needs: [version, build-rpm, build-deb]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download RPM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-rpm.outputs.artifact-name }}
+          path: artifacts/
+
+      - name: Download DEB artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-deb.outputs.artifact-name }}
+          path: artifacts/
+
+      - name: List release artifacts
+        run: ls -lh artifacts/
+
+      - name: Generate release notes
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          CERT_COUNT=$(find certs -maxdepth 1 \( -name "*.crt" -o -name "*.pem" \) \
+            -type f 2>/dev/null | wc -l | xargs)
+
+          cat > /tmp/release-notes.md <<NOTES
+          ## Amentum Root CA Certificate Packages — ${VERSION}
+
+          Automated release containing **${CERT_COUNT}** certificate(s).
+
+          ### Packages
+
+          | File | Target |
+          |------|--------|
+          | \`amentum-certs-${VERSION}-1.noarch.rpm\` | RHEL / CentOS / Rocky Linux / Alma Linux |
+          | \`amentum-certs_${VERSION}_all.deb\` | Debian / Ubuntu |
+
+          ### Installation
+
+          **RHEL / CentOS / Rocky Linux / Alma Linux:**
+          \`\`\`bash
+          sudo rpm -ivh amentum-certs-${VERSION}-1.noarch.rpm
+          \`\`\`
+
+          **Debian / Ubuntu:**
+          \`\`\`bash
+          sudo dpkg -i amentum-certs_${VERSION}_all.deb
+          \`\`\`
+          NOTES
+
+      - name: Create or update GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          if gh release view "${VERSION}" > /dev/null 2>&1; then
+            echo "Release ${VERSION} already exists — updating artifacts..."
+            gh release upload "${VERSION}" artifacts/* --clobber
+          else
+            echo "Creating new release ${VERSION}..."
+            gh release create "${VERSION}" \
+              --title "Release ${VERSION}" \
+              --notes-file /tmp/release-notes.md \
+              artifacts/*
+          fi
