@@ -37,7 +37,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          dnf install -y rpm-build rpmdevtools ca-certificates p11-kit-trust
+          dnf install -y rpm-build rpmdevtools ca-certificates p11-kit-trust openssl
 
       - name: Set version
         id: version
@@ -68,10 +68,11 @@ jobs:
             || echo "(no certificate files installed in this build)"
 
           echo ""
-          echo "=== Amentum certificates in system trust store ==="
-          trust list --filter=ca-anchors 2>/dev/null \
-            | grep -i "amentum" \
-            || echo "(no Amentum certificates found in trust store)"
+          echo "=== Installed certificate subjects ==="
+          rpm -ql amentum-certs | grep '/etc/pki/ca-trust/source/anchors/' | while IFS= read -r cert; do
+            [ -f "${cert}" ] || continue
+            echo "  $(openssl x509 -noout -subject -in "${cert}" 2>/dev/null || echo "${cert}")"
+          done
 
       - name: Set artifact metadata
         id: artifact-meta

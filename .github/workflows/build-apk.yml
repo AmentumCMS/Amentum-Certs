@@ -49,25 +49,24 @@ jobs:
           fi
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
 
-      - name: Generate signing key
-        env:
-          ABUILD_ALLOW_ROOT: "1"
-          PACKAGER: "Amentum CI <certs@amentum.com>"
+      - name: Create build user
+        shell: sh
         run: |
-          # Generate keypair without -i (which needs doas); install pubkey manually since we're root
-          abuild-keygen -a -n
-          pub_key="$(ls /github/home/.abuild/*.rsa.pub 2>/dev/null | head -1)"
-          if [ -n "${pub_key}" ]; then
-            cp "${pub_key}" /etc/apk/keys/
-          fi
+          adduser -D builduser
+          addgroup builduser abuild
+          chown -R builduser:builduser .
+
+      - name: Generate signing key
+        shell: sh
+        run: |
+          su builduser -c 'HOME=/home/builduser PACKAGER="Amentum CI <certs@amentum.com>" abuild-keygen -a -n'
+          cp /home/builduser/.abuild/*.rsa.pub /etc/apk/keys/
 
       - name: Build APK
-        env:
-          ABUILD_ALLOW_ROOT: "1"
-          PACKAGER: "Amentum CI <certs@amentum.com>"
+        shell: sh
         run: |
           chmod +x scripts/build-apk.sh
-          ./scripts/build-apk.sh "${{ steps.version.outputs.version }}"
+          su builduser -c "HOME=/home/builduser PACKAGER='Amentum CI <certs@amentum.com>' bash scripts/build-apk.sh '${{ steps.version.outputs.version }}'"
 
       - name: Test APK installation
         run: |
