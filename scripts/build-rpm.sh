@@ -15,7 +15,7 @@ echo "Building ${PACKAGE_NAME} RPM version ${VERSION}"
 mkdir -p "${BUILD_ROOT}"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
 
 # Collect certificate files from the certs/ directory
-mapfile -t CERT_FILES < <(find certs -maxdepth 1 \( -name "*.crt" -o -name "*.pem" \) -type f 2>/dev/null | sort)
+mapfile -t CERT_FILES < <(find certs -maxdepth 1 \( -name "*.crt" -o -name "*.pem" -o -name "*.cer" \) -type f 2>/dev/null | sort)
 
 echo "Found ${#CERT_FILES[@]} certificate file(s) in certs/"
 

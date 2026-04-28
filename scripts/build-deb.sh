@@ -19,7 +19,7 @@ mkdir -p "${PKG_DIR}/usr/local/share/ca-certificates/amentum"
 mkdir -p "${PKG_DIR}/usr/share/doc/${PACKAGE_NAME}"
 
 # Collect certificate files from the certs/ directory
-mapfile -t CERT_FILES < <(find certs -maxdepth 1 \( -name "*.crt" -o -name "*.pem" \) -type f 2>/dev/null | sort)
+mapfile -t CERT_FILES < <(find certs -maxdepth 1 \( -name "*.crt" -o -name "*.pem" -o -name "*.cer" \) -type f 2>/dev/null | sort)
 
 echo "Found ${#CERT_FILES[@]} certificate file(s) in certs/"
 
@@ -29,6 +29,8 @@ for cert in "${CERT_FILES[@]}"; do
     fname="$(basename "${cert}")"
     if [[ "${fname}" == *.pem ]]; then
         dest_name="${fname%.pem}.crt"
+    elif [[ "${fname}" == *.cer ]]; then
+        dest_name="${fname%.cer}.crt"
     else
         dest_name="${fname}"
     fi
