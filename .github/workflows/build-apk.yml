@@ -99,7 +99,7 @@ jobs:
             >> "${GITHUB_OUTPUT}"
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: apk-package-${{ steps.version.outputs.version }}
           path: "*.apk"
