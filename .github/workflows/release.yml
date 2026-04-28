@@ -55,11 +55,21 @@ jobs:
       version: ${{ needs.version.outputs.version }}
 
   # -------------------------------------------------------------------------
-  # Download both artifacts and publish the GitHub release
+  # Build & test the APK package (reuses the shared workflow)
+  # -------------------------------------------------------------------------
+  build-apk:
+    name: Build APK
+    needs: version
+    uses: ./.github/workflows/build-apk.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  # -------------------------------------------------------------------------
+  # Download all artifacts and publish the GitHub release
   # -------------------------------------------------------------------------
   release:
     name: Publish Release
-    needs: [version, build-rpm, build-deb]
+    needs: [version, build-rpm, build-deb, build-apk]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -77,6 +87,12 @@ jobs:
           name: ${{ needs.build-deb.outputs.artifact-name }}
           path: artifacts/
 
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-apk.outputs.artifact-name }}
+          path: artifacts/
+
       - name: List release artifacts
         run: ls -lh artifacts/
 
@@ -84,7 +100,7 @@ jobs:
         env:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          CERT_COUNT=$(find certs -maxdepth 1 \( -name "*.crt" -o -name "*.pem" \) \
+          CERT_COUNT=$(find certs -maxdepth 1 \( -name "*.crt" -o -name "*.pem" -o -name "*.cer" \) \
             -type f 2>/dev/null | wc -l | xargs)
 
           cat > /tmp/release-notes.md <<NOTES
@@ -98,6 +114,7 @@ jobs:
           |------|--------|
           | \`amentum-certs-${VERSION}-1.noarch.rpm\` | RHEL / CentOS / Rocky Linux / Alma Linux |
           | \`amentum-certs_${VERSION}_all.deb\` | Debian / Ubuntu |
+          | \`amentum-certs-${VERSION}-r0.apk\` | Alpine Linux |
 
           ### Installation
 
@@ -109,6 +126,11 @@ jobs:
           **Debian / Ubuntu:**
           \`\`\`bash
           sudo dpkg -i amentum-certs_${VERSION}_all.deb
+          \`\`\`
+
+          **Alpine Linux:**
+          \`\`\`bash
+          sudo apk add --allow-untrusted amentum-certs-${VERSION}-r0.apk
           \`\`\`
           NOTES
 

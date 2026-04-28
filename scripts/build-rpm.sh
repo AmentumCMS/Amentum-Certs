@@ -42,7 +42,7 @@ SPEC_FILE="${BUILD_ROOT}/SPECS/${PACKAGE_NAME}.spec"
 cat > "${SPEC_FILE}" <<SPEC
 Name:           ${PACKAGE_NAME}
 Version:        ${VERSION}
-Release:        1%{?dist}
+Release:        1
 Summary:        Amentum Root CA Certificates
 License:        Proprietary
 BuildArch:      noarch

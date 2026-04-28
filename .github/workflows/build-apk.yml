@@ -1,0 +1,103 @@
+name: Build APK Package
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'certs/**'
+      - 'scripts/build-apk.sh'
+      - '.github/workflows/build-apk.yml'
+  workflow_call:
+    inputs:
+      version:
+        description: 'Package version (YYYYMMDD format)'
+        type: string
+        required: false
+        default: ''
+    outputs:
+      artifact-name:
+        description: 'Name of the uploaded APK artifact'
+        value: ${{ jobs.build.outputs.artifact-name }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and Test APK
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:latest
+    outputs:
+      artifact-name: ${{ steps.artifact-meta.outputs.artifact-name }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        shell: sh
+        run: |
+          apk add --no-cache bash alpine-sdk ca-certificates openssl
+
+      - name: Set version
+        id: version
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [ -z "${VERSION}" ]; then
+            VERSION="$(date +%Y%m%d)"
+          fi
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Generate signing key
+        env:
+          ABUILD_ALLOW_ROOT: "1"
+          PACKAGER: "Amentum CI <certs@amentum.com>"
+        run: |
+          abuild-keygen -a -i -n
+
+      - name: Build APK
+        env:
+          ABUILD_ALLOW_ROOT: "1"
+          PACKAGER: "Amentum CI <certs@amentum.com>"
+        run: |
+          chmod +x scripts/build-apk.sh
+          ./scripts/build-apk.sh "${{ steps.version.outputs.version }}"
+
+      - name: Test APK installation
+        run: |
+          echo "=== Installing APK package ==="
+          apk add --allow-untrusted amentum-certs-*.apk
+
+          echo ""
+          echo "=== Installed Amentum certificate files ==="
+          ls -la /usr/local/share/ca-certificates/amentum/ 2>/dev/null \
+            || echo "(no certificate files installed in this build)"
+
+          echo ""
+          echo "=== CA trust store update output ==="
+          update-ca-certificates 2>&1 \
+            | grep -iE "adding|added|amentum" \
+            || echo "(no Amentum certificates added to trust store)"
+
+          echo ""
+          echo "=== Amentum certificate subjects ==="
+          for cert in /usr/local/share/ca-certificates/amentum/*.crt; do
+            [ -f "${cert}" ] && \
+              echo "Installed: $(openssl x509 -noout -subject -in "${cert}" 2>/dev/null \
+                || echo "${cert}")"
+          done || echo "(no Amentum certificates installed)"
+
+      - name: Set artifact metadata
+        id: artifact-meta
+        run: |
+          echo "artifact-name=apk-package-${{ steps.version.outputs.version }}" \
+            >> "${GITHUB_OUTPUT}"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-package-${{ steps.version.outputs.version }}
+          path: "*.apk"
+          if-no-files-found: error
+          retention-days: 30
