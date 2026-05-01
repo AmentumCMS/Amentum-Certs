@@ -164,7 +164,7 @@ jobs:
             alpine:latest sh -c '
               apk add --no-cache alpine-sdk
               cd /repo
-              apk index -o APKINDEX.tar.gz *.apk
+              apk index --allow-untrusted -o APKINDEX.tar.gz *.apk
             '
 
       # -----------------------------------------------------------------------
