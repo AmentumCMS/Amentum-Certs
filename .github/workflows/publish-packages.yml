@@ -106,7 +106,6 @@ jobs:
           # Copy GPG public key if available
           if [ -f packages/rpm/RPM-GPG-KEY-amentum ]; then
             cp packages/rpm/RPM-GPG-KEY-amentum publish/yum/RPM-GPG-KEY-amentum
-            cp packages/rpm/RPM-GPG-KEY-amentum publish/yum/rpms/RPM-GPG-KEY-amentum
           fi
 
           createrepo_c publish/yum/rpms/
