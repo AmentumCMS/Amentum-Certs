@@ -42,6 +42,9 @@ jobs:
     uses: ./.github/workflows/build-rpm.yml
     with:
       version: ${{ needs.version.outputs.version }}
+    secrets:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
   build-deb:
     name: Build DEB
@@ -99,7 +102,52 @@ jobs:
 
           mkdir -p publish/yum/rpms
           cp packages/rpm/*.rpm publish/yum/rpms/
+
+          # Copy GPG public key if available
+          if [ -f packages/rpm/RPM-GPG-KEY-amentum ]; then
+            cp packages/rpm/RPM-GPG-KEY-amentum publish/yum/RPM-GPG-KEY-amentum
+          fi
+
           createrepo_c publish/yum/rpms/
+
+      - name: Check GPG key availability
+        id: gpg-check
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          if [ -n "${GPG_PRIVATE_KEY}" ]; then
+            echo "available=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "available=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Sign YUM repository metadata
+        if: steps.gpg-check.outputs.available == 'true'
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          # Import GPG key
+          echo "${GPG_PRIVATE_KEY}" | gpg --batch --import
+
+          GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format long 2>/dev/null \
+            | grep '^sec' | head -1 | awk '{print $2}' | cut -d'/' -f2)
+
+          # Sign the repomd.xml
+          gpg --batch --pinentry-mode loopback --passphrase "${GPG_PASSPHRASE}" \
+            --detach-sign --armor publish/yum/rpms/repodata/repomd.xml
+
+      - name: Create YUM repo configuration file
+        run: |
+          REPO_BASE_URL="https://amentumcms.github.io/Amentum-Certs/yum"
+          cat > publish/yum/amentum-certs.repo <<-REPO
+          [amentum-certs]
+          name=Amentum Root CA Certificates
+          baseurl=${REPO_BASE_URL}/rpms/
+          enabled=1
+          gpgcheck=1
+          gpgkey=${REPO_BASE_URL}/RPM-GPG-KEY-amentum
+          REPO
 
       # -----------------------------------------------------------------------
       # APT repository
@@ -185,6 +233,17 @@ jobs:
             <li><a href="apt/">APT Repository (Debian/Ubuntu)</a></li>
             <li><a href="apk/">APK Repository (Alpine Linux)</a></li>
           </ul>
+          <h2>GPG Signing Key</h2>
+          <ul>
+            <li><a href="yum/RPM-GPG-KEY-amentum">RPM GPG Public Key</a></li>
+            <li><a href="yum/amentum-certs.repo">YUM/DNF Repository Configuration File</a></li>
+          </ul>
+          <h2>Quick Setup (RHEL/CentOS/Rocky/Alma)</h2>
+          <pre>
+          sudo curl -o /etc/yum.repos.d/amentum-certs.repo \
+            https://amentumcms.github.io/Amentum-Certs/yum/amentum-certs.repo
+          sudo dnf install amentum-certs
+          </pre>
           </body>
           </html>
           EOF
