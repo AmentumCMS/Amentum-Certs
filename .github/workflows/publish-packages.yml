@@ -67,6 +67,8 @@ jobs:
     name: Publish to GitHub Pages
     needs: [version, build-rpm, build-deb, build-apk]
     runs-on: ubuntu-latest
+    outputs:
+      gpg-available: ${{ steps.gpg-check.outputs.available }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -334,6 +336,7 @@ jobs:
           echo "✅ Index page is accessible"
 
       - name: Verify GPG public key
+        if: needs.publish.outputs.gpg-available == 'true'
         run: |
           HTTP_CODE=$(curl -s -o /tmp/gpg-key -w "%{http_code}" \
             "https://amentumcms.github.io/Amentum-Certs/yum/RPM-GPG-KEY-amentum")
@@ -350,6 +353,12 @@ jobs:
             cat /tmp/gpg-key
             exit 1
           fi
+
+      - name: Skip GPG verification (no key configured)
+        if: needs.publish.outputs.gpg-available != 'true'
+        run: |
+          echo "⚠️  GPG_PRIVATE_KEY secret is not configured — skipping GPG key verification."
+          echo "To enable GPG signing, add GPG_PRIVATE_KEY and GPG_PASSPHRASE repository secrets."
 
       - name: Verify YUM repo config
         run: |
@@ -404,6 +413,7 @@ jobs:
           echo "✅ APK index is accessible"
 
       - name: Test RPM GPG key import (simulated)
+        if: needs.publish.outputs.gpg-available == 'true'
         run: |
           # Download and verify the key can be processed by gpg
           curl -sS -o /tmp/RPM-GPG-KEY-amentum \
@@ -412,6 +422,7 @@ jobs:
           echo "✅ GPG key can be imported successfully"
 
       - name: Test YUM/DNF repository setup (Rocky Linux container)
+        if: needs.publish.outputs.gpg-available == 'true'
         run: |
           docker run --rm rockylinux:9 bash -c '
             set -e
@@ -420,6 +431,27 @@ jobs:
             echo "✅ GPG key imported successfully"
 
             echo ""
+            echo "=== Installing repo config ==="
+            curl -so /etc/yum.repos.d/amentum-certs.repo \
+              https://amentumcms.github.io/Amentum-Certs/yum/amentum-certs.repo
+            cat /etc/yum.repos.d/amentum-certs.repo
+
+            echo ""
+            echo "=== Testing dnf repolist ==="
+            dnf repolist --repo=amentum-certs
+            echo "✅ Repository is recognized by dnf"
+
+            echo ""
+            echo "=== Testing package installation ==="
+            dnf install -y amentum-certs
+            echo "✅ Package installed successfully from repository"
+          '
+
+      - name: Test YUM/DNF repository setup without GPG (Rocky Linux container)
+        if: needs.publish.outputs.gpg-available != 'true'
+        run: |
+          docker run --rm rockylinux:9 bash -c '
+            set -e
             echo "=== Installing repo config ==="
             curl -so /etc/yum.repos.d/amentum-certs.repo \
               https://amentumcms.github.io/Amentum-Certs/yum/amentum-certs.repo
