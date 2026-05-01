@@ -14,6 +14,13 @@ on:
         type: string
         required: false
         default: ''
+    secrets:
+      GPG_PRIVATE_KEY:
+        description: 'GPG private key for RPM signing (ASCII-armored)'
+        required: false
+      GPG_PASSPHRASE:
+        description: 'Passphrase for the GPG private key'
+        required: false
     outputs:
       artifact-name:
         description: 'Name of the uploaded RPM artifact'
@@ -37,7 +44,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          dnf install -y rpm-build rpmdevtools ca-certificates p11-kit-trust openssl
+          dnf install -y rpm-build rpmdevtools rpm-sign ca-certificates p11-kit-trust openssl gnupg2
 
       - name: Set version
         id: version
@@ -52,6 +59,51 @@ jobs:
         run: |
           chmod +x scripts/build-rpm.sh
           ./scripts/build-rpm.sh "${{ steps.version.outputs.version }}"
+
+      - name: Check GPG key availability
+        id: gpg-check
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          if [ -n "${GPG_PRIVATE_KEY}" ]; then
+            echo "available=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "available=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Import GPG key and sign RPM
+        if: steps.gpg-check.outputs.available == 'true'
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          # Import the GPG private key
+          echo "${GPG_PRIVATE_KEY}" | gpg --batch --import
+
+          # Get the GPG key ID
+          GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format long 2>/dev/null \
+            | grep '^sec' | head -1 | awk '{print $2}' | cut -d'/' -f2)
+          echo "Signing with GPG key: ${GPG_KEY_ID}"
+
+          # Configure RPM macros for signing
+          cat > ~/.rpmmacros <<-MACROS
+          %_signature gpg
+          %_gpg_name ${GPG_KEY_ID}
+          %__gpg_sign_cmd %{__gpg} gpg --batch --pinentry-mode loopback --passphrase "${GPG_PASSPHRASE}" --no-armor --no-verbose -u "%{_gpg_name}" -sbo %{__signature_filename} %{__plaintext_filename}
+          MACROS
+
+          # Sign all RPMs
+          for rpm_file in amentum-certs-*.rpm; do
+            echo "Signing ${rpm_file}..."
+            rpm --addsign "${rpm_file}"
+          done
+
+          # Verify the signature
+          rpm --checksig amentum-certs-*.rpm
+
+          # Export the public key for publishing
+          gpg --armor --export "${GPG_KEY_ID}" > RPM-GPG-KEY-amentum
+          echo "GPG public key exported to RPM-GPG-KEY-amentum"
 
       - name: Test RPM installation
         run: |
@@ -84,6 +136,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: rpm-package-${{ steps.version.outputs.version }}
-          path: "*.rpm"
+          path: |
+            *.rpm
+            RPM-GPG-KEY-amentum
           if-no-files-found: error
           retention-days: 30

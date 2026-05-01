@@ -18,6 +18,22 @@ fetch and install in a single step.
 
 ### RHEL / CentOS / Rocky Linux / Alma Linux
 
+#### Option A: Use the hosted YUM repository (recommended)
+
+```bash
+# Add the Amentum repository (includes GPG key verification)
+sudo curl -o /etc/yum.repos.d/amentum-certs.repo \
+  https://amentumcms.github.io/Amentum-Certs/yum/amentum-certs.repo
+
+# Install the package (GPG signature is verified automatically)
+sudo dnf install amentum-certs
+
+# Verify installed certificates
+trust list --filter=ca-anchors | grep -i amentum
+```
+
+#### Option B: Install directly from GitHub Releases
+
 ```bash
 # Download and install the latest release in one step
 VERSION=$(curl -fsSL -o /dev/null -w '%{url_effective}' \
@@ -69,23 +85,34 @@ ls /usr/share/ca-certificates/amentum/
 
 | Package | Signed | Notes |
 |---------|--------|-------|
-| RPM | No | Packages are unsigned. Verify the download source via HTTPS. |
+| RPM | **Yes** | Packages and YUM repo metadata are GPG-signed. Public key published at the repository URL. |
 | DEB | No | Individual `.deb` files are unsigned. Verify the download source via HTTPS. |
 | APK | CI ephemeral key | Each CI run generates a fresh RSA key; no persistent public key is distributed. |
 
-Because RPM and DEB packages are currently unsigned, your package manager may warn
-about missing signatures. The commands above bypass signature checks where needed:
+### RPM GPG Verification
 
-- **RPM** — `rpm -ivh` will print `Header V3 RSA/SHA256 Signature, key ID ... NOT OK` or
-  similar when no signature is present. Pass `--nosignature` to suppress the warning if
-  your RPM configuration treats unsigned packages as errors.
-- **DEB** — `dpkg -i` does not check GPG signatures on individual `.deb` files, so no
-  extra flag is required.
-- **APK** — `apk add --allow-untrusted` is required because the signing key used during
-  CI is ephemeral and is not in the system keystore.
+RPM packages are signed with the Amentum GPG key. When using the hosted YUM repository
+(see "Option A" above), the GPG key is imported automatically. To manually import the key:
 
-All packages are served exclusively over HTTPS from GitHub Releases, providing
-integrity and authenticity guarantees through TLS.
+```bash
+# Import the Amentum RPM signing key
+sudo rpm --import https://amentumcms.github.io/Amentum-Certs/yum/RPM-GPG-KEY-amentum
+
+# Verify a downloaded package
+rpm --checksig amentum-certs-*.rpm
+```
+
+### Repository Setup (required secrets)
+
+To enable GPG signing in CI, configure the following repository secrets:
+
+| Secret | Description |
+|--------|-------------|
+| `GPG_PRIVATE_KEY` | ASCII-armored GPG private key used for signing |
+| `GPG_PASSPHRASE` | Passphrase for the GPG private key |
+
+If these secrets are not configured, packages will be built without signatures (same
+behavior as before).
 
 ### Trusting the APK signing key (optional)
 

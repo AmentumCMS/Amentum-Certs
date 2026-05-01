@@ -43,6 +43,9 @@ jobs:
     uses: ./.github/workflows/build-rpm.yml
     with:
       version: ${{ needs.version.outputs.version }}
+    secrets:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
   # -------------------------------------------------------------------------
   # Build & test the DEB package (reuses the shared workflow)
