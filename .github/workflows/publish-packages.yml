@@ -1,0 +1,205 @@
+name: Publish Package Repositories
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version override (default: YYYYMMDD of today)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Compute the release version once so all downstream jobs share the same tag.
+  # ---------------------------------------------------------------------------
+  version:
+    name: Set Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.set-version.outputs.version }}
+    steps:
+      - name: Compute version
+        id: set-version
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if [ -z "${VERSION}" ]; then
+            VERSION="$(date +%Y%m%d)"
+          fi
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "Release version: ${VERSION}"
+
+  # ---------------------------------------------------------------------------
+  # Build packages using the existing reusable workflows.
+  # ---------------------------------------------------------------------------
+  build-rpm:
+    name: Build RPM
+    needs: version
+    uses: ./.github/workflows/build-rpm.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  build-deb:
+    name: Build DEB
+    needs: version
+    uses: ./.github/workflows/build-deb.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  build-apk:
+    name: Build APK
+    needs: version
+    uses: ./.github/workflows/build-apk.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  # ---------------------------------------------------------------------------
+  # Generate repository metadata and publish to gh-pages branch.
+  # ---------------------------------------------------------------------------
+  publish:
+    name: Publish to GitHub Pages
+    needs: [version, build-rpm, build-deb, build-apk]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download RPM artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build-rpm.outputs.artifact-name }}
+          path: packages/rpm/
+
+      - name: Download DEB artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build-deb.outputs.artifact-name }}
+          path: packages/deb/
+
+      - name: Download APK artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build-apk.outputs.artifact-name }}
+          path: packages/apk/
+
+      - name: List downloaded packages
+        run: find packages/ -type f | sort
+
+      # -----------------------------------------------------------------------
+      # YUM / DNF repository
+      # -----------------------------------------------------------------------
+      - name: Generate YUM repository metadata
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y createrepo-c
+
+          mkdir -p publish/yum/rpms
+          cp packages/rpm/*.rpm publish/yum/rpms/
+          createrepo_c publish/yum/rpms/
+
+      # -----------------------------------------------------------------------
+      # APT repository
+      # -----------------------------------------------------------------------
+      - name: Generate APT repository metadata
+        run: |
+          CODENAME="stable"
+          COMPONENT="main"
+          ARCH="all"
+
+          # Pool directory
+          mkdir -p "publish/apt/pool/${COMPONENT}"
+          cp packages/deb/*.deb "publish/apt/pool/${COMPONENT}/"
+
+          # Binary index
+          DIST_DIR="publish/apt/dists/${CODENAME}/${COMPONENT}/binary-${ARCH}"
+          mkdir -p "${DIST_DIR}"
+
+          cd publish/apt
+          dpkg-scanpackages "pool/${COMPONENT}" /dev/null \
+            > "dists/${CODENAME}/${COMPONENT}/binary-${ARCH}/Packages"
+          gzip -k "dists/${CODENAME}/${COMPONENT}/binary-${ARCH}/Packages"
+
+          # Release file
+          cd "dists/${CODENAME}"
+
+          {
+            echo "Origin: Amentum"
+            echo "Label: Amentum Certs"
+            echo "Suite: ${CODENAME}"
+            echo "Codename: ${CODENAME}"
+            echo "Architectures: ${ARCH}"
+            echo "Components: ${COMPONENT}"
+            echo "Description: Amentum root CA certificate packages"
+            echo "MD5Sum:"
+            for f in ${COMPONENT}/binary-${ARCH}/Packages ${COMPONENT}/binary-${ARCH}/Packages.gz; do
+              HASH=$(md5sum "$f" | awk '{print $1}')
+              SIZE=$(stat -c%s "$f")
+              echo " ${HASH} ${SIZE} ${f}"
+            done
+            echo "SHA256:"
+            for f in ${COMPONENT}/binary-${ARCH}/Packages ${COMPONENT}/binary-${ARCH}/Packages.gz; do
+              HASH=$(sha256sum "$f" | awk '{print $1}')
+              SIZE=$(stat -c%s "$f")
+              echo " ${HASH} ${SIZE} ${f}"
+            done
+          } > Release
+
+          cd ../../../..
+
+      # -----------------------------------------------------------------------
+      # Alpine APK repository
+      # -----------------------------------------------------------------------
+      - name: Generate APK repository index
+        run: |
+          mkdir -p publish/apk/x86_64
+          cp packages/apk/*.apk publish/apk/x86_64/
+
+          # Use Alpine container to generate the APKINDEX
+          docker run --rm \
+            -v "$(pwd)/publish/apk/x86_64:/repo" \
+            alpine:latest sh -c '
+              apk add --no-cache alpine-sdk
+              cd /repo
+              apk index -o APKINDEX.tar.gz *.apk
+            '
+
+      # -----------------------------------------------------------------------
+      # Add an index page for GitHub Pages
+      # -----------------------------------------------------------------------
+      - name: Create index page
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          cat > publish/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head><title>Amentum Certificate Package Repositories</title></head>
+          <body>
+          <h1>Amentum Certificate Package Repositories</h1>
+          <ul>
+            <li><a href="yum/">YUM/DNF Repository (RHEL/CentOS/Rocky/Alma)</a></li>
+            <li><a href="apt/">APT Repository (Debian/Ubuntu)</a></li>
+            <li><a href="apk/">APK Repository (Alpine Linux)</a></li>
+          </ul>
+          </body>
+          </html>
+          EOF
+
+      # -----------------------------------------------------------------------
+      # Deploy to gh-pages branch
+      # -----------------------------------------------------------------------
+      - name: Deploy to gh-pages
+        run: |
+          cd publish
+          git init
+          git checkout -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Publish package repositories (version ${{ needs.version.outputs.version }})"
+          git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git push -f origin gh-pages
