@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head><title>Amentum Certificate Package Repositories</title></head>
+<body>
+<h1>Amentum Certificate Package Repositories</h1>
+<ul>
+  <li><a href="yum/">YUM/DNF Repository (RHEL/CentOS/Rocky/Alma)</a></li>
+  <li><a href="apt/">APT Repository (Debian/Ubuntu)</a></li>
+  <li><a href="apk/">APK Repository (Alpine Linux)</a></li>
+</ul>
+<h2>GPG Signing Key</h2>
+<ul>
+  <li><a href="yum/RPM-GPG-KEY-amentum">RPM GPG Public Key</a></li>
+  <li><a href="yum/amentum-certs.repo">YUM/DNF Repository Configuration File</a></li>
+</ul>
+<h2>Quick Setup (RHEL/CentOS/Rocky/Alma)</h2>
+<pre>
+sudo curl -o /etc/yum.repos.d/amentum-certs.repo \
+  https://amentumcms.github.io/Amentum-Certs/yum/amentum-certs.repo
+sudo dnf install amentum-certs
+</pre>
+</body>
+</html>

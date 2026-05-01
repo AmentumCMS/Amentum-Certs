@@ -1,0 +1,5 @@
+[amentum-certs]
+name=Amentum Root CA Certificates
+baseurl=https://amentumcms.github.io/Amentum-Certs/yum/rpms/
+enabled=1
+gpgcheck=0

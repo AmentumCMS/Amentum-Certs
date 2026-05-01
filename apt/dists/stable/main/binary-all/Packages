@@ -1,0 +1,19 @@
+Package: amentum-certs
+Version: 20260501
+Architecture: all
+Maintainer: Amentum <certs@amentum.com>
+Installed-Size: 56
+Depends: ca-certificates
+Filename: pool/main/amentum-certs_20260501_all.deb
+Size: 3228
+MD5sum: 58a82908cceb89fc5990967f0b21336c
+SHA1: 5e7f991cb2894421d8994707c3f5ca0ede06695a
+SHA256: d46bcd9a0d65276823bbc26572bc8fa8f133f7f1deb05a800e8f6feb69b70c80
+Section: misc
+Priority: optional
+Description: Amentum Root CA Certificates
+ Installs Amentum root CA certificates into the system certificate trust
+ store on Debian, Ubuntu, and other DEB-based distributions. The
+ post-install script runs update-ca-certificates to refresh the trust
+ database.
+

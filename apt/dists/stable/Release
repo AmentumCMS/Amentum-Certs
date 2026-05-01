@@ -1,0 +1,13 @@
+Origin: Amentum
+Label: Amentum Certs
+Suite: stable
+Codename: stable
+Architectures: all
+Components: main
+Description: Amentum root CA certificate packages
+MD5Sum:
+ 2c8940783355bb8f05833af0584d8f16 661 main/binary-all/Packages
+ 5edaaf56542f9f3c918cdee4d0892511 443 main/binary-all/Packages.gz
+SHA256:
+ 7807e44ff6993fa6712573aacb629ffa1c971fbcd3faf51678981ce9286333c9 661 main/binary-all/Packages
+ b611641065082cc17d8821f9b5fa59aa5971b1f45cc07ee24e31f0c6aa4ff87d 443 main/binary-all/Packages.gz
